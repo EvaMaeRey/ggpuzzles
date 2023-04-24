@@ -1,0 +1,238 @@
+---
+title: "geom_bar_delim"
+author: "Evangeline Reynolds"
+date: "4/24/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Puzzle: how to get delimited column of data to be split up, counted and returned as bar chart.
+
+## Do it with base ggplot2
+
+```{r}
+library(tidyverse)
+
+toy_survey <- data.frame(q1 = c('excitement;skepticism', 'skepticism;curiousity'))
+
+
+toy_survey %>%
+  pull(q1) %>%
+  paste(collapse = ";") %>%
+  str_split_1(";") %>%
+  data.frame(x = .) %>%
+  count(x) %>%
+  mutate(y = n) %>%
+  ggplot() +
+  aes(x = x, y = y) +
+  geom_col() + 
+  labs(x = NULL,
+       y = "Number of respondents indicating sentiment")
+
+layer_data(last_plot())
+```
+
+
+# 2. try to extend
+
+```{r}
+compute_panel_bar_delim <- function(data,
+                                     scales){
+
+  data$responses %>%
+    paste(collapse = ";") %>%
+    str_split_1(";") %>%
+    data.frame(cats = .) %>%
+    count(cats) %>%
+    rename(num_responding = n)
+
+}
+
+
+toy_survey %>%
+  rename(responses = q1) %>%
+  compute_panel_bar_delim()
+```
+
+
+```{r}
+setup_data_function <- function(data, params){
+
+  if(data$group[1] == -1){
+    nrows <- nrow(data)
+    data$group <- seq_len(nrows)
+  }
+
+  data
+
+}
+
+
+
+StatBardelim <- ggplot2::ggproto(
+  `_class` = "StatBardelim",
+  `_inherit` = ggplot2::Stat,
+  # required_aes = c("responses"),
+  compute_panel = compute_panel_bar_delim,
+  default_aes = ggplot2::aes(x = after_stat(cats), 
+                             y = after_stat(num_responding), 
+                             group = after_stat(cats))#,
+  # setup_data = setup_data_function
+  # compute_goup = compute_group_bar_delim
+)
+
+geom_bar_delim <- function(
+  mapping = NULL,
+  data = NULL,
+  position = "identity",
+  na.rm = FALSE,
+  show.legend = NA,
+  inherit.aes = TRUE, ...) {
+  ggplot2::layer(
+    stat = StatBardelim,  # proto object from Step 2
+    geom = ggplot2::GeomCol,  # inherit other behavior
+    data = data,
+    mapping = mapping,
+    position = position,
+    show.legend = show.legend,
+    inherit.aes = inherit.aes,
+    params = list(na.rm = na.rm, ...)
+  )
+}
+```
+
+# try to use extension
+
+```{r, error=T}
+toy_survey %>%
+  ggplot() +
+  aes(responses = q1) +
+  geom_bar_delim()
+```
+
+
+
+Backtrace:
+
+  1. base (local) `<fn>`(x)
+
+  2. ggplot2:::print.ggplot(x)
+
+  4. ggplot2:::ggplot_build.ggplot(x)
+
+  5. ggplot2:::by_layer(...)
+
+ 12. ggplot2 (local) f(l = layers[[i]], d = data[[i]])
+
+# Some ideas
+
+- maybe cat needs to be a factor?
+
+
+
+
+# 2. try to extend
+
+```{r}
+compute_panel_bar_delim <- function(data,
+                                     scales){
+
+  data$responses %>%
+    paste(collapse = ";") %>%
+    str_split_1(";") %>%
+    data.frame(cats = .) %>%
+    count(cats) %>%
+    mutate(cats = as.factor(cats)) %>% 
+    rename(num_responding = n)
+
+}
+
+
+toy_survey %>%
+  rename(responses = q1) %>%
+  compute_panel_bar_delim()
+```
+
+
+```{r}
+setup_data_function <- function(data, params){
+
+  if(data$group[1] == -1){
+    nrows <- nrow(data)
+    data$group <- seq_len(nrows)
+  }
+
+  data
+
+}
+
+
+
+StatBardelim <- ggplot2::ggproto(
+  `_class` = "StatBardelim",
+  `_inherit` = ggplot2::Stat,
+  required_aes = c("responses"),
+  compute_panel = compute_panel_bar_delim,
+  default_aes = ggplot2::aes(x = after_stat(cats), 
+                             y = after_stat(num_responding))#,
+  # setup_data = setup_data_function
+  # compute_goup = compute_group_bar_delim
+)
+
+geom_bar_delim <- function(
+  mapping = NULL,
+  data = NULL,
+  position = "identity",
+  na.rm = FALSE,
+  show.legend = NA,
+  inherit.aes = TRUE, ...) {
+  ggplot2::layer(
+    stat = StatBardelim,  # proto object from Step 2
+    geom = ggplot2::GeomCol,  # inherit other behavior
+    data = data,
+    mapping = mapping,
+    position = position,
+    show.legend = show.legend,
+    inherit.aes = inherit.aes,
+    params = list(na.rm = na.rm, ...)
+  )
+}
+```
+
+# try to use extension
+
+```{r, eval  = F, error=T}
+toy_survey %>%
+  ggplot() +
+  aes(responses = q1) +
+  geom_bar_delim()
+```
+
+
+Backtrace:
+
+  1. base (local) `<fn>`(x)
+
+  2. ggplot2:::print.ggplot(x)
+
+  4. ggplot2:::ggplot_build.ggplot(x)
+
+  5. ggplot2:::by_layer(...)
+
+ 12. ggplot2 (local) f(l = layers[[i]], d = data[[i]])
+
+     ...
+
+ 15. self$geom$setup_data(data, self$computed_geom_params)
+
+ 16. ggplot2 (local) setup_data(...)
+
+ 18. ggplot2::resolution(data$x, FALSE)
+
+ 20. base::Summary.factor(`<fct>`, na.rm = TRUE)
+
+ 21. base::stop(gettextf("%s not meaningful for factors", sQuote(.Generic)))
+

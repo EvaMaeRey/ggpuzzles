@@ -1,0 +1,182 @@
+---
+title: "labeled lollipop"
+author: "Evangeline Reynolds"
+date: "4/24/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+# Puzzle: labels weren't returning when using stamp_dbinom()
+
+# Puzzle solved!  (missing '...' in geom_post_label when combining geoms_(...).
+
+# 0. A function to produce probability frames of interest
+
+```{r}
+
+tidy_dbinom <- function(single_trial_prob = .5, num_trials = 10){
+
+  num_successes <- 0:num_trials
+  probability <- stats::dbinom(x = num_successes, size = num_trials, prob = single_trial_prob)
+
+  tibble::tibble(num_successes, probability, single_trial_prob, num_trials)
+
+}
+
+tidy_dbinom()
+
+```
+
+# 1. write geom_post for discrete probabilities
+
+```{r cars}
+compute_group_post <- function(data, scales){
+
+  data$xend <- data$x
+  data$yend <- 0
+
+  data
+
+}
+
+statPost <- ggplot2::ggproto(`_class` = "statPost",
+                    `_inherit` = ggplot2::Stat,
+                    required_aes = c("x", "y"),
+                    compute_group = compute_group_post)
+
+
+
+geom_post <- function(
+  mapping = NULL,
+  data = NULL,
+  position = "identity",
+  na.rm = FALSE,
+  show.legend = NA,
+  inherit.aes = TRUE, ...) {
+  ggplot2::layer(
+    stat = statPost,  # proto object from step 2
+    geom = ggplot2::GeomSegment,  # inherit other behavior
+    data = data,
+    mapping = mapping,
+    position = position,
+    show.legend = show.legend,
+    inherit.aes = inherit.aes,
+    params = list(na.rm = na.rm, ...)
+  )
+}
+
+ggplot(data = tidy_dbinom()) +
+aes(x = num_successes, y = probability) +
+geom_post()
+```
+
+# 2. write convenience labeler for posts
+
+```{r}
+compute_group_post_label <- function(data, scales, round_digits = 3){
+
+  return_small = rep(0, round_digits - 1) %>% paste(collapse = "") %>% paste0("< .", . , "1")
+
+  data$xend <- data$x
+  data$yend <- 0
+  data$label <- round(data$y, digits = round_digits)
+  data$label <- ifelse(data$label == 0 , return_small, data$label)
+
+  data
+
+}
+
+statPostlabel <- ggplot2::ggproto(`_class` = "statPostlabel",
+                    `_inherit` = ggplot2::Stat,
+                    required_aes = c("x", "y"),
+                    compute_group = compute_group_post_label)
+
+
+
+geom_post_label <- function(
+  mapping = NULL,
+  data = NULL,
+  position = "identity",
+  na.rm = FALSE,
+  show.legend = NA,
+  inherit.aes = TRUE,
+  vjust = -.6, ...) {
+  ggplot2::layer(
+    stat = statPostlabel,  # proto object from step 2
+    geom = ggplot2::GeomText,  # inherit other behavior
+    data = data,
+    mapping = mapping,
+    position = position,
+    show.legend = show.legend,
+    inherit.aes = inherit.aes,
+    params = list(na.rm = na.rm, vjust = vjust, ...)
+  )
+}
+
+
+library(ggplot2)
+
+ggplot(data = tidy_dbinom()) +
+aes(x = num_successes, y = probability) +
+geom_post() +
+geom_post_label()
+
+
+```
+
+
+# 3. combine geom_post, geom_post_label, and geom_point for lollipop
+
+```{r}
+
+
+geom_lollipop <- function(annotate = FALSE, ...){
+
+  if(annotate){
+  list(
+    geom_post(...),
+    geom_point(...),
+    geom_post_label(...)
+  )
+  }else{
+    list(
+      geom_post(...),
+      geom_point(...)
+    )
+  }
+
+
+}
+
+library(ggplot2)
+ggplot(data = tidy_dbinom(num_trials = 10, single_trial_prob = .2)) +
+aes(x = num_successes, y = probability) +
+geom_lollipop(annotate = TRUE)
+
+
+```
+
+4. Wrapping for lollipop
+
+
+
+```{r}
+
+stamp_dbinom <- function(single_trial_prob = .5, num_trials = 10, annotate = FALSE){
+
+  geom_lollipop(annotate = annotate,
+                data = tidy_dbinom(single_trial_prob = single_trial_prob,
+                                   num_trials = num_trials),
+                mapping = ggplot2::aes(x = num_successes, y = probability))
+
+}
+
+ggplot() +
+stamp_dbinom(single_trial_prob = 1/12, 
+             num_trials = 3,
+             annotate=TRUE)
+```
