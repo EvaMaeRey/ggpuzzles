@@ -1,0 +1,254 @@
+---
+title: "county centers for labelling"
+author: "Evangeline Reynolds"
+date: "4/24/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# reproduce failing
+
+```{r}
+library(tidyverse)
+
+nc_county_centers <- data.frame(     x   =  -81.49496,   y = 36.42112,  county_name = "Ashe",   fips = "37009") 
+
+#' Title
+#'
+#' @param data
+#' @param scales
+#' @param county
+#'
+#' @return
+#' @export
+#'
+#' @examples
+#' nc_flat |> rename(fips = FIPS, label = NAME) |> compute_county_coords_nc() |> ggplot() + aes(x, y, label = label)  + geom_text()
+compute_county_coords_nc <- function(data, scales, keep_county = NULL){
+
+  nc_county_centers_filtered <- nc_county_centers %>% slice(1) #%>% as.data.frame()
+  #
+  if(!is.null(keep_county)){
+
+    keep_county %>% tolower() -> keep_county
+
+    nc_county_centers_filtered %>%
+      dplyr::filter(.data$county_name %>%
+                      tolower() %in%
+                      keep_county) ->
+      nc_county_centers_filtered
+
+  }
+
+  # nc_county_centers_filtered <- data.frame(fips = "37009", x = 1,  y= 1)
+
+  # data <- nc_flat|> rename(fips = FIPS, label = NAME)
+  data %>%
+    dplyr::inner_join(nc_county_centers_filtered, by = join_by(fips)) %>%
+    # dplyr::mutate(group = -1) %>%
+    dplyr::select(-fips) %>%
+    dplyr::select(x, y, label)
+
+  # data.frame(x = 1, y = 1, label = "hi")
+
+}
+
+
+
+
+
+StatCountynclabel <- ggplot2::ggproto(`_class` = "StatCountynclabel",
+                                 `_inherit` = ggplot2::Stat,
+                                 required_aes = "label",
+                                 compute_group = compute_county_coords_nc)
+
+
+
+
+
+geom_sf_text_countync <- function(
+  mapping = NULL,
+  data = NULL,
+  position = "identity",
+  na.rm = FALSE,
+  show.legend = NA,
+  inherit.aes = TRUE, ...) {
+  ggplot2::layer(
+    stat = StatCountynclabel,  # proto object from step 2
+    geom = ggplot2::GeomText,  # inherit other behavior
+    data = data,
+    mapping = mapping,
+    position = position,
+    show.legend = show.legend,
+    inherit.aes = inherit.aes,
+    params = list(na.rm = na.rm, ...)
+  )
+}
+
+ggnc::nc_flat %>%
+ggplot() +
+aes(fips = FIPS) +
+geom_sf_text_countync(aes(label = NAME))
+
+```
+
+
+# from recipe book, use geom_rownumber, miniaml
+
+
+```{r}
+# step 00 reference data
+nc_county_centers <- data.frame(     x   =  -81.49496,   y = 36.42112,  county_name = "Ashe",   fips = "37009") 
+
+# step 0 
+
+ggnc::nc_flat %>%
+  rename(fips = FIPS) %>% 
+  rename(label = NAME) %>% 
+  inner_join(nc_county_centers) %>% 
+ggplot() +
+aes(x = x, y = y, fips = fips) +
+geom_text(aes(label = label))
+
+
+# step 1
+compute_group_row_number <- function(data,
+                                     scales){
+  data %>%
+    inner_join(nc_county_centers) %>% 
+    select(x, y, label)
+
+}
+
+
+# step 1b test the computation function
+ggnc::nc_flat %>%
+  rename(fips = FIPS) %>% 
+  rename(label = NAME) %>% 
+  compute_group_row_number()
+
+# step 2 proto
+StatRownumber <- ggplot2::ggproto(
+  `_class` = "StatRownumber",
+  `_inherit` = ggplot2::Stat,
+  # required_aes = c("x", "y"),
+  compute_panel = compute_group_row_number
+  )
+
+# step 3
+geom_label_row_number <- function(
+  mapping = NULL,
+  data = NULL,
+  position = "identity",
+  na.rm = FALSE,
+  show.legend = NA,
+  inherit.aes = TRUE, ...) {
+  ggplot2::layer(
+    stat = StatRownumber,  # proto object from Step 2
+    geom = ggplot2::GeomLabel,  # inherit other behavior
+    data = data,
+    mapping = mapping,
+    position = position,
+    show.legend = show.legend,
+    inherit.aes = inherit.aes,
+    params = list(na.rm = na.rm, ...)
+  )
+}
+
+# stpe 4 test/enjoy
+ggnc::nc_flat %>% 
+  ggplot() + 
+  aes(fips = FIPS, label = NAME) + 
+  geom_label_row_number()
+
+```
+
+
+
+
+
+
+
+
+# from recipe book, use geom_rownumber, add back features, fix function and proto nmes
+
+
+```{r}
+# step 00 reference data
+nc_county_centers <- data.frame(     x   =  -81.49496,   y = 36.42112,  county_name = "Ashe",   fips = "37009") 
+
+
+# step 1
+compute_panel_county_centers <- function(data,
+                                     scales, 
+                                     keep_county = NULL){
+  
+  nc_county_centers_filtered <- nc_county_centers
+  
+  if(!is.null(keep_county)){    
+    keep_county %>% tolower() -> keep_county
+
+    nc_county_centers_filtered %>%
+      dplyr::filter(.data$county_name %>%
+                      tolower() %in%
+                      keep_county) ->
+      nc_county_centers_filtered}
+  
+  data %>%
+    inner_join(nc_county_centers_filtered) %>% 
+    select(x, y, label)
+
+}
+
+
+# step 1b test the computation function
+ggnc::nc_flat %>%
+  rename(fips = FIPS) %>% 
+  rename(label = NAME) %>% 
+  compute_panel_county_centers()
+
+# step 2 proto
+StatCountycenters <- ggplot2::ggproto(
+  `_class` = "StatRownumber",
+  `_inherit` = ggplot2::Stat,
+  # required_aes = c("label"), # for some reason this breaks things... why?
+  compute_panel = compute_panel_county_centers
+  )
+
+# step 3
+geom_label_row_number <- function(
+  mapping = NULL,
+  data = NULL,
+  position = "identity",
+  na.rm = FALSE,
+  show.legend = NA,
+  inherit.aes = TRUE, ...) {
+  ggplot2::layer(
+    stat = StatCountycenters,  # proto object from Step 2
+    geom = ggplot2::GeomText,  # inherit other behavior
+    data = data,
+    mapping = mapping,
+    position = position,
+    show.legend = show.legend,
+    inherit.aes = inherit.aes,
+    params = list(na.rm = na.rm, ...)
+  )
+}
+
+# stpe 4 test/enjoy
+ggnc::nc_flat %>% 
+  ggplot() + 
+  aes(fips = FIPS, label = NAME) + 
+  geom_label_row_number()
+
+```
+
+
+# Puzzle... 
+
+Why does `required_aes = c("label")` change things...
+
